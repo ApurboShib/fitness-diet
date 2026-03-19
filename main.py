@@ -6,6 +6,68 @@ from typing import Annotated, Literal, Optional
 
 app = FastAPI()
 
+# create a pydantic baseModel
+
+class Person(BaseModel):
+    id : Annotated[str, Field(..., description="Unique ID of the person")]
+    name : Annotated[str, Field(..., description="Name of the person")]
+    age : Annotated[int, Field(...,gt=0, lt=120, description="Age of the person")]
+    height : Annotated[float, Field(...,gt=0, description="Height of the person in cm")]
+    weight : Annotated[float, Field(...,gt=0, description="Weight of the person in kg")]
+    mental_health : Annotated[int, Field(..., description="Mental health score of the person on a scale of 1 to 10")]
+    workout : Annotated[int, Field(..., description="Number of workouts per week")]
+    has_personal_trainer : Annotated[bool, Field(..., description="Whether the person has a personal trainer or not")]
+    calories : Annotated[int, Field(..., description="Daily calorie intake of the person")]
+    diet : Annotated[str, Field(..., description="Diet type followed by the person")]
+    gender : Annotated[str, Field(..., description="Gender of the person")]
+
+
+@computed_field
+@property
+
+def bmi(self) -> float:
+    return self.weight / ((self.height / 100) ** 2)
+
+@computed_field
+@property
+def health_score(self) -> float:
+    # Calculate health score based on various factors
+    score = 0
+
+    # Age factor
+    if self.age < 30:
+        score += 20
+    elif self.age < 50:
+        score += 10
+    else:
+        score += 5
+
+    # BMI factor
+    if self.bmi < 18.5:
+        score += 10
+    elif self.bmi < 25:
+        score += 20
+    elif self.bmi < 30:
+        score += 10
+    else:
+        score += 5
+
+    # Mental health factor
+    score += self.mental_health * 2
+
+    # Workout factor
+    if self.workout >= 5:
+        score += 20
+    elif self.workout >= 3:
+        score += 10
+    else:
+        score += 5
+
+    # Personal trainer factor
+    if self.has_personal_trainer:
+        score += 10
+
+    return score
 
 @app.get('/')
 def home():
