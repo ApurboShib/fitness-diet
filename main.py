@@ -50,5 +50,23 @@ def view_person(person_id : str = Path(..., description="this is a unique ID of 
     
                 
 
+# implemet the sorting and ordering of the data.
 
+@app.get('/sort')
+def sort_data(sort_by:str = Query(..., description="Sort on the basis of height and weight"), order:str = Query(..., description="You can order it ASC or DESC wise.")):
+    Valid_feilds = ['height', 'weight', 'bmi']
+    Valid_order = ['ASC', 'DESC']
 
+    if sort_by not in Valid_feilds:
+        raise HTTPException(status_code=400, detail= f"Invalid field selected. choose {Valid_feilds} ")
+    if order not in Valid_order:
+        raise HTTPException(status_code=400, detail="Invalid Order selected.")
+    
+    data = load_data()
+
+    # DESC means reverse should be True. ASC means False.
+    reverse_order = True if order == 'DESC' else False
+
+    # data is a list object so we don't use .values()
+    response_data = sorted(data, key = lambda x : x.get(sort_by, 0), reverse = reverse_order)
+    return response_data
