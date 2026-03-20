@@ -429,3 +429,14 @@ def advanced_search(
         "results": results
     }
 
+# build the delete endpoint to delete the data.
+
+@app.delete('/delete/{person_id}')
+def delete_person(person_id: str = Path(..., description="Unique ID of the person to be deleted")):
+    data = load_data()
+    for idx, person in enumerate(data):
+        if person.get("id") == person_id:
+            del data[idx]
+            save_info(data)
+            return JSONResponse(content={"message": "Person deleted successfully."}, status_code=200)
+    raise HTTPException(status_code=404, detail="Person not found.")
