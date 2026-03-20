@@ -1,10 +1,21 @@
-from fastapi import FastAPI, Path, HTTPException, Query
+import pandas as pd
+import pickle
+import os
+from train import train_and_save_model
+from fastapi import FastAPI, Path, HTTPException, Query, BackgroundTasks
 import json
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, computed_field
 from typing import Annotated, Literal, Optional
 
 app = FastAPI()
+
+# Load the trained model globally
+try:
+    with open('Model/model.pkl', 'rb') as f:
+        ml_model = pickle.load(f)
+except FileNotFoundError:
+    ml_model = None
 
 # create a pydantic baseModel
 
@@ -15,7 +26,12 @@ class Person(BaseModel):
     height : Annotated[float, Field(...,gt=0, description="Height of the person in cm")]
     weight : Annotated[float, Field(...,gt=0, description="Weight of the person in kg")]
     mental_health : Annotated[int, Field(..., description="Mental health score of the person on a scale of 1 to 10")]
+    sleep_hours : Annotated[float, Field(7.0, description="Average sleep hours per night")]
     workout : Annotated[int, Field(..., description="Number of workouts per week")]
+    water_intake: Annotated[float, Field(2.0, description="Water intake in liters")]
+    family_history_obesity: Annotated[str, Field("no", description="Family history of obesity (yes/no)")]
+    smoking_habits: Annotated[str, Field("No", description="Smoking habits (Yes/No)")]
+    alcohol_consumption: Annotated[str, Field("Sometimes", description="Alcohol consumption (Never, Sometimes, Frequently, Always)")]
     has_personal_trainer : Annotated[bool, Field(..., description="Whether the person has a personal trainer or not")]
     calories : Annotated[int, Field(..., description="Daily calorie intake of the person")]
     diet : Annotated[str, Field(..., description="Diet type followed by the person")]
@@ -77,7 +93,12 @@ class Updated_Person(Person):
     height : Annotated[Optional[float], Field(None,gt=0, description="Height of the person in cm")]
     weight : Annotated[Optional[float], Field(None,gt=0, description="Weight of the person in kg")]
     mental_health : Annotated[Optional[int], Field(None, description="Mental health score of the person on a scale of 1 to 10")]
+    sleep_hours : Annotated[Optional[float], Field(None, description="Average sleep hours per night")]
     workout : Annotated[Optional[int], Field(None, description="Number of workouts per week")]
+    water_intake: Annotated[Optional[float], Field(None, description="Water intake in liters")]
+    family_history_obesity: Annotated[Optional[str], Field(None, description="Family history of obesity (yes/no)")]
+    smoking_habits: Annotated[Optional[str], Field(None, description="Smoking habits (Yes/No)")]
+    alcohol_consumption: Annotated[Optional[str], Field(None, description="Alcohol consumption")]
     has_personal_trainer : Annotated[Optional[bool], Field(None, description="Whether the person has a personal trainer or not")]
     calories : Annotated[Optional[int], Field(None, description="Daily calorie intake of the person")]
     diet : Annotated[Optional[str], Field(None, description="Diet type followed by the person")]
@@ -85,6 +106,21 @@ class Updated_Person(Person):
 @app.get('/')
 def home():
     return {"messege" : "Personal Fitness & Diet Recommender System "}
+
+@app.post('/retrain')
+def retrain_model(background_tasks: BackgroundTasks):
+    def run_training():
+        global ml_model
+        success = train_and_save_model()
+        if success:
+            try:
+                with open('Model/model.pkl', 'rb') as f:
+                    ml_model = pickle.load(f)
+            except Exception as e:
+                print(f"Error loading retrained model: {e}")
+
+    background_tasks.add_task(run_training)
+    return {"message": "Model retraining started in the background."}
 
 # About of my app.
 
@@ -287,39 +323,85 @@ def update_person(person_id: str, updated_person: Updated_Person):
 
 # Recommendation Endpoints
 
+def predict_obesity_level(person):
+    if ml_model is None:
+        return "Model not found"
+        
+    df = pd.DataFrame([{
+        'Age': person.age,
+        'Height': person.height / 100.0, # Adjusting if model expects meters
+        'Weight': person.weight,
+        'Physical_Activity_Frequency': person.workout,
+        'Water_Intake': getattr(person, 'water_intake', 2.0),
+        'mental_health': person.mental_health,
+        'sleep_hours': getattr(person, 'sleep_hours', 7.0),
+        'Gender': person.gender,
+        'Family_History_Obesity': getattr(person, 'family_history_obesity', 'no'),
+        'Smoking_Habits': getattr(person, 'smoking_habits', 'No'),
+        'Dietary_Habits': person.diet,
+        'Alcohol_Consumption': getattr(person, 'alcohol_consumption', 'Sometimes')
+    }])
+    try:
+        pred = ml_model.predict(df)
+        return str(pred[0])
+    except Exception as e:
+        return f"Prediction Error: {str(e)}"
+
+@app.post('/predict')
+def get_prediction(person: Person):
+    """Explicitly predict obesity level based on the person's data."""
+    prediction = predict_obesity_level(person)
+    return {"predicted_obesity_level": prediction}
+
 @app.get('/recommend/diet/{person_id}')
 def recommend_diet(person_id: str = Path(..., description="Unique ID of the person")):
     data = load_data()
     for person_data in data:
         if person_data.get("id") == person_id:
-            # We can't strictly use Person(**person_data) if the json has missing fields. 
-            # We'll calculate it safely using standard dictionaries fallback for raw json fields.
             try:
                 person = Person(**person_data)
                 bmi = person.bmi
                 name = person.name
-                diet = person.diet
+                current_diet = person.diet
+                
+                # ML-driven prediction
+                obesity_prediction = predict_obesity_level(person)
+                
+                # Model-driven recommendation
+                obesity_str = str(obesity_prediction).lower()
+                if "underweight" in obesity_str or "insufficient" in obesity_str:
+                    recommendation = "High Calorie, Protein-rich diet (Caloric Surplus) for safe weight gain."
+                elif "normal" in obesity_str:
+                    recommendation = "Balanced diet to maintain current weight and health."
+                elif "obese" in obesity_str or "overweight" in obesity_str:
+                    recommendation = "Caloric Deficit, Low Carb/High Protein diet for weight loss."
+                else:
+                    # Fallback
+                    recommendation = f"Personalized diet needed based on predicted status: {obesity_prediction}."
+
             except Exception:
                 # Fallback if Pydantic model validation fails due to missing keys in DB
                 weight = person_data.get("weight", 0)
                 height = person_data.get("height", 1) 
                 bmi = weight / (height ** 2) if height else 0
                 name = person_data.get("name", "Unknown")
-                diet = person_data.get("diet", "Unknown")
-            
-            # Simple diet recommendation logic based on BMI
-            if bmi < 18.5:
-                recommendation = "High Calorie, Protein-rich diet (Caloric Surplus) for safe weight gain."
-            elif 18.5 <= bmi < 25:
-                recommendation = "Balanced diet to maintain current weight and health."
-            else:
-                recommendation = "Caloric Deficit, Low Carb/High Protein diet for safely losing weight."
-            
+                current_diet = person_data.get("diet", "Unknown")
+                obesity_prediction = "Unknown due to missing data"
+                
+                # Simple Fallback 
+                if bmi < 18.5:
+                    recommendation = "High Calorie, Protein-rich diet (Caloric Surplus) for safe weight gain."
+                elif 18.5 <= bmi < 25:
+                    recommendation = "Balanced diet to maintain current weight and health."
+                else:
+                    recommendation = "Caloric Deficit, Low Carb/High Protein diet for safely losing weight."
+
             return {
                 "person_id": person_id,
                 "name": name,
-                "current_diet": diet,
+                "current_diet": current_diet,
                 "bmi": round(bmi, 2),
+                "predicted_status": obesity_prediction,
                 "diet_recommendation": recommendation
             }
             
@@ -331,7 +413,6 @@ def recommend_workout(person_id: str = Path(..., description="Unique ID of the p
     data = load_data()
     for person_data in data:
         if person_data.get("id") == person_id:
-            # Safe Fallback Strategy like above
             try:
                 person = Person(**person_data)
                 bmi = person.bmi
@@ -339,6 +420,22 @@ def recommend_workout(person_id: str = Path(..., description="Unique ID of the p
                 health_score = person.health_score
                 has_trainer = person.has_personal_trainer
                 name = person.name
+                
+                # ML-driven prediction
+                obesity_prediction = predict_obesity_level(person)
+
+                # ML-driven workout recommendation logic based on predicted status
+                obesity_str = str(obesity_prediction).lower()
+                if workout < 3:
+                    recommendation = "Start with full-body workouts 3 days a week. Add 20-30 mins of moderate cardio."
+                else:
+                    if "underweight" in obesity_str or "normal" in obesity_str or "insufficient" in obesity_str:
+                        recommendation = "Focus on a Push/Pull/Legs hypertrophy split to build or maintain muscle."
+                    else:
+                        recommendation = "Combine heavy strength training with High-Intensity Interval Training (HIIT) to reduce body fat."
+                
+                trainer_note = " Consult your personal trainer for a specific routine!" if has_trainer else ""
+
             except Exception:
                 weight = person_data.get("weight", 0)
                 height = person_data.get("height", 1) 
@@ -347,23 +444,24 @@ def recommend_workout(person_id: str = Path(..., description="Unique ID of the p
                 has_trainer = person_data.get("has_personal_trainer", False)
                 name = person_data.get("name", "Unknown")
                 health_score = "Unable to compute (Missing Data)"
-            
-            # Simple workout recommendation logic based on workouts per week and BMI
-            if workout < 3:
-                recommendation = "Start with full-body workouts 3 days a week. Add 20-30 mins of moderate cardio."
-            else:
-                if bmi < 25:
-                    recommendation = "Focus on a Push/Pull/Legs hypertrophy split to build or maintain muscle."
+                obesity_prediction = "Unknown due to missing data"
+                
+                if workout < 3:
+                    recommendation = "Start with full-body workouts 3 days a week. Add 20-30 mins of moderate cardio."
                 else:
-                    recommendation = "Combine heavy strength training with High-Intensity Interval Training (HIIT) to reduce body fat."
-            
-            trainer_note = " Consult your personal trainer for a specific routine!" if has_trainer else ""
+                    if bmi < 25:
+                        recommendation = "Focus on a Push/Pull/Legs hypertrophy split to build or maintain muscle."
+                    else:
+                        recommendation = "Combine heavy strength training with High-Intensity Interval Training (HIIT) to reduce body fat."
+                
+                trainer_note = " Consult your personal trainer for a specific routine!" if has_trainer else ""
 
             return {
                 "person_id": person_id,
                 "name": name,
                 "current_workouts_per_week": workout,
                 "health_score": health_score,
+                "predicted_status": obesity_prediction,
                 "workout_recommendation": recommendation + trainer_note
             }
             
