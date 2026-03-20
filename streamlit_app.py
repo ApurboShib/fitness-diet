@@ -105,12 +105,7 @@ elif choice == "👥 View All Users":
     res = requests.get(f"{API_URL}/view")
     if res.status_code == 200 and res.json():
         df = pd.DataFrame(res.json())
-        numeric_cols = df.select_dtypes(include='number').columns
-        if not numeric_cols.empty:
-            styled_df = df.style.highlight_max(axis=0, subset=numeric_cols, color='#ffcccb')
-        else:
-            styled_df = df
-        st.dataframe(styled_df, use_container_width=True)
+        st.dataframe(df, use_container_width=True)
     else:
         st.warning("No users found in the database. Please add some users first.")
 
@@ -119,7 +114,7 @@ elif choice == "🩺 Recommendations":
     res = requests.get(f"{API_URL}/view")
     if res.status_code == 200 and res.json():
         users = res.json()
-        user_options = {u['id']: u['name'] for u in users}
+        user_options = {u['id']: u.get('name', f"Unknown ({u['id']})") for u in users}
         
         st.markdown("Select a user to dynamically generate health pipelines tailored to their ML-predicted lifestyle score.")
         selected_id = st.selectbox("Select Registered User ID", options=list(user_options.keys()), format_func=lambda x: f"{x} - {user_options[x]}")
