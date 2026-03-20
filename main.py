@@ -26,9 +26,26 @@ class Person(BaseModel):
     def bmi(self) -> float:
         return self.weight / (self.height  ** 2)
 
-    @computed_field
-    @property
-    def health_score(self) -> float:
+    
+
+# updated pydantic model with computed fields.
+
+class Updated_Person(Person):
+    id : Annotated[Optional[str], Field(None, description="Unique ID of the person")]
+    name : Annotated[Optional[str], Field(None, description="Name of the person")]
+    age : Annotated[Optional[int], Field(None,gt=0, lt=120, description="Age of the person")]
+    height : Annotated[Optional[float], Field(None,gt=0, description="Height of the person in cm")]
+    weight : Annotated[Optional[float], Field(None,gt=0, description="Weight of the person in kg")]
+    mental_health : Annotated[Optional[int], Field(None, description="Mental health score of the person on a scale of 1 to 10")]
+    workout : Annotated[Optional[int], Field(None, description="Number of workouts per week")]
+    has_personal_trainer : Annotated[Optional[bool], Field(None, description="Whether the person has a personal trainer or not")]
+    calories : Annotated[Optional[int], Field(None, description="Daily calorie intake of the person")]
+    diet : Annotated[Optional[str], Field(None, description="Diet type followed by the person")]
+
+
+@computed_field
+@property
+def health_score(self) -> float:
         # Calculate health score based on various factors
         score = 0
 
@@ -143,3 +160,33 @@ def create_user(person : Person):
     data.append(person_dict)
     save_info(data)
     return JSONResponse(content={"message": "Person added successfully."}, status_code=201)
+
+# create a put endpoint to update the data.
+@app.put('/update')
+def update_person(person_id: str, updated_person: Updated_Person):
+    data = load_data()
+
+    # Find the person in the list
+    for person in data:
+        if person.get("id") == person_id:
+            existing_person_info = person
+            break
+    else:
+        raise HTTPException(status_code=404, detail="Person not found.")
+
+    updated_data = updated_person.model_dump(exclude_unset=True)
+    # Update the existing person dictionary
+    for key, value in updated_data.items():
+        existing_person_info[key] = value
+        
+    # Re-evaluate computed fields by passing through the Person model
+    person_pydantic_object = Person(**existing_person_info)
+    
+    # Update the person in the original data list
+    for idx, person in enumerate(data):
+        if person.get("id") == person_id:
+            data[idx] = person_pydantic_object.model_dump()
+            break
+            
+    save_info(data)
+    return JSONResponse(content={"message": "Person updated successfully."}, status_code=200)
