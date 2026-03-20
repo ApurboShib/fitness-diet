@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
+import plotly.graph_objects as go
 
 API_URL = "http://127.0.0.1:8000"
 
@@ -9,14 +10,10 @@ st.set_page_config(page_title="AI Fitness & Diet Tracker", page_icon="🏋️‍
 # Custom CSS for better aesthetics
 st.markdown("""
 <style>
-    .main {
-        background-color: #f0f4f8;
-    }
     .stMetric {
-        background-color: white;
         padding: 15px;
         border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         border-left: 4px solid #ff4b4b;
     }
     h1 {
@@ -40,7 +37,7 @@ st.markdown("""
 st.title("🏋️‍♂️ AI-Powered Fitness & Diet Recommender")
 st.markdown("### *Your Intelligent Health Assistant*")
 
-menu = ["👤 Create Profile & Predict", "📊 Dashboard & Analytics", "🩺 Recommendations", "👥 View All Users"]
+menu = ["👤 Create Profile & Predict", "🧑‍💻 User Profile Dashboard", "📊 Global Analytics", "👥 View All Users"]
 choice = st.sidebar.radio("Navigation", menu)
 
 if choice == "👤 Create Profile & Predict":
@@ -105,43 +102,97 @@ elif choice == "👥 View All Users":
     res = requests.get(f"{API_URL}/view")
     if res.status_code == 200 and res.json():
         df = pd.DataFrame(res.json())
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width='stretch')
     else:
         st.warning("No users found in the database. Please add some users first.")
 
-elif choice == "🩺 Recommendations":
-    st.header("🩺 AI-Driven Recommendations")
+elif choice == "�‍💻 User Profile Dashboard":
+    st.header("🧑‍💻 User Profile & Health Dashboard")
     res = requests.get(f"{API_URL}/view")
     if res.status_code == 200 and res.json():
         users = res.json()
         user_options = {u['id']: u.get('name', f"Unknown ({u['id']})") for u in users}
         
-        st.markdown("Select a user to dynamically generate health pipelines tailored to their ML-predicted lifestyle score.")
-        selected_id = st.selectbox("Select Registered User ID", options=list(user_options.keys()), format_func=lambda x: f"{x} - {user_options[x]}")
+        st.markdown("Select a user to view their complete health profile, lifestyle metrics, and AI recommendations.")
+        selected_id = st.selectbox("Select Registered User", options=list(user_options.keys()), format_func=lambda x: f"{x} - {user_options[x]}")
         
-        if st.button("Generate ML Recommendations"):
-            col1, col2 = st.columns(2)
+        if selected_id:
+            user_data = next((u for u in users if u['id'] == selected_id), None)
             
-            with col1:
-                st.subheader("🥗 Diet Engine")
-                diet_res = requests.get(f"{API_URL}/recommend/diet/{selected_id}")
-                if diet_res.status_code == 200:
-                    d_data = diet_res.json()
-                    st.metric("Predicted Status", d_data.get('predicted_status', 'N/A'))
-                    st.metric("Current BMI", d_data.get('bmi', 'N/A'))
-                    st.success(d_data.get('diet_recommendation', 'N/A'))
-                    
-            with col2:
-                st.subheader("💪 Workout Engine")
-                work_res = requests.get(f"{API_URL}/recommend/workout/{selected_id}")
-                if work_res.status_code == 200:
-                    w_data = work_res.json()
-                    st.metric("Custom Health Score", w_data.get('health_score', 'N/A'))
-                    st.info(w_data.get('workout_recommendation', 'N/A'))
-    else:
-        st.warning("Please add some users first to view recommendations.")
+            if user_data:
+                st.markdown("---")
+                # Profile Header
+                col1, col2, col3 = st.columns([1, 1.5, 1])
+                with col1:
+                    st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=120)
+                with col2:
+                    st.subheader(f"✨ {user_data.get('name', 'Unknown User')}")
+                    st.write(f"**ID:** `{user_data.get('id')}` | **Age:** {user_data.get('age', 'N/A')} | **Gender:** {user_data.get('gender', 'N/A')}")
+                    st.write(f"**Height:** {user_data.get('height', 'N/A')}cm | **Weight:** {user_data.get('weight', 'N/A')}kg")
+                with col3:
+                    bmi = user_data.get('bmi', 0)
+                    if isinstance(bmi, (int, float)):
+                        st.metric("Current BMI", f"{bmi:.1f}")
+                    else:
+                        st.metric("Current BMI", "N/A")
+                
+                st.markdown("---")
+                # Metrics & Radar Chart
+                sc1, sc2 = st.columns([1, 1.5])
+                with sc1:
+                    st.markdown("### 📊 Key Statistics")
+                    st.write(f"- **Dietary Habits:** {user_data.get('diet', 'N/A')}")
+                    st.write(f"- **Avg Daily Calories:** {user_data.get('calories', 'N/A')} kcal")
+                    st.write(f"- **Personal Trainer:** {'Yes' if user_data.get('has_personal_trainer') else 'No'}")
+                    st.write(f"- **Family History:** {user_data.get('family_history_obesity', 'N/A')}")
+                    st.write(f"- **Smoking:** {user_data.get('smoking_habits', 'N/A')} | **Alcohol:** {user_data.get('alcohol_consumption', 'N/A')}")
+                
+                with sc2:
+                    # Radar chart for lifestyle
+                    categories = ['Mental Health', 'Sleep (hrs)', 'Water (L)', 'Workout (days)']
+                    vals = [
+                        user_data.get('mental_health', 0), 
+                        user_data.get('sleep_hours', user_data.get('sleep', 0)), 
+                        user_data.get('water_intake', 0), 
+                        user_data.get('workout', 0)
+                    ]
+                    fig = go.Figure(data=go.Scatterpolar(
+                        r=vals,
+                        theta=categories,
+                        fill='toself',
+                        marker=dict(color='#ff4b4b'),
+                        line=dict(color='#ff4b4b')
+                    ))
+                    fig.update_layout(
+                        polar=dict(radialaxis=dict(visible=True, range=[0, 10])),
+                        showlegend=False,
+                        margin=dict(l=20, r=20, t=20, b=20),
+                        height=250
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
 
-elif choice == "📊 Dashboard & Analytics":
+                st.markdown("### 🤖 AI Health Plan & Recommendations")
+                rc1, rc2 = st.columns(2)
+                
+                with rc1:
+                    st.info("#### 🥗 Diet Engine")
+                    diet_res = requests.get(f"{API_URL}/recommend/diet/{selected_id}")
+                    if diet_res.status_code == 200:
+                        d_data = diet_res.json()
+                        st.write(f"**Predicted Status:** {d_data.get('predicted_status', 'N/A')}")
+                        st.success(d_data.get('diet_recommendation', 'N/A'))
+                        
+                with rc2:
+                    st.info("#### 💪 Workout Engine")
+                    work_res = requests.get(f"{API_URL}/recommend/workout/{selected_id}")
+                    if work_res.status_code == 200:
+                        w_data = work_res.json()
+                        st.write(f"**Smart Health Score:** {w_data.get('health_score', 'N/A')}")
+                        st.warning(w_data.get('workout_recommendation', 'N/A'))
+    else:
+        st.warning("Please add some users first to view profiles.")
+
+elif choice == "📊 Global Analytics":
     st.header("📊 Application Analytics & ML Retraining")
     
     col1, col2, col3 = st.columns(3)
