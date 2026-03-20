@@ -146,6 +146,18 @@ def sort_data(sort_by:str = Query(..., description="Sort on the basis of height 
     response_data = sorted(data, key = lambda x : x.get(sort_by, 0), reverse = reverse_order)
     return response_data
 
+# add the endpoints to recommend the diet plan.
+
+@app.get('/recommend/{person_id}')
+def recommend_diet(person_id: str):
+    data = load_data()
+    for person in data:
+        if person.get("id") == person_id:
+            return {"person_id": person_id, "recommended_diet": person.get("diet")}
+    raise HTTPException(status_code=404, detail="Person not found.")
+
+
+
 # build a post endpoint to add the data.
 @app.post('/create')
 def create_user(person : Person):
@@ -188,3 +200,87 @@ def update_person(person_id: str, updated_person: Updated_Person):
             
     save_info(data)
     return JSONResponse(content={"message": "Person updated successfully."}, status_code=200)
+
+# Recommendation Endpoints
+
+@app.get('/recommend/diet/{person_id}')
+def recommend_diet(person_id: str = Path(..., description="Unique ID of the person")):
+    data = load_data()
+    for person_data in data:
+        if person_data.get("id") == person_id:
+            # We can't strictly use Person(**person_data) if the json has missing fields. 
+            # We'll calculate it safely using standard dictionaries fallback for raw json fields.
+            try:
+                person = Person(**person_data)
+                bmi = person.bmi
+                name = person.name
+                diet = person.diet
+            except Exception:
+                # Fallback if Pydantic model validation fails due to missing keys in DB
+                weight = person_data.get("weight", 0)
+                height = person_data.get("height", 1) 
+                bmi = weight / (height ** 2) if height else 0
+                name = person_data.get("name", "Unknown")
+                diet = person_data.get("diet", "Unknown")
+            
+            # Simple diet recommendation logic based on BMI
+            if bmi < 18.5:
+                recommendation = "High Calorie, Protein-rich diet (Caloric Surplus) for safe weight gain."
+            elif 18.5 <= bmi < 25:
+                recommendation = "Balanced diet to maintain current weight and health."
+            else:
+                recommendation = "Caloric Deficit, Low Carb/High Protein diet for safely losing weight."
+            
+            return {
+                "person_id": person_id,
+                "name": name,
+                "current_diet": diet,
+                "bmi": round(bmi, 2),
+                "diet_recommendation": recommendation
+            }
+            
+    raise HTTPException(status_code=404, detail="Person not found.")
+
+
+@app.get('/recommend/workout/{person_id}')
+def recommend_workout(person_id: str = Path(..., description="Unique ID of the person")):
+    data = load_data()
+    for person_data in data:
+        if person_data.get("id") == person_id:
+            # Safe Fallback Strategy like above
+            try:
+                person = Person(**person_data)
+                bmi = person.bmi
+                workout = person.workout
+                health_score = person.health_score
+                has_trainer = person.has_personal_trainer
+                name = person.name
+            except Exception:
+                weight = person_data.get("weight", 0)
+                height = person_data.get("height", 1) 
+                bmi = weight / (height ** 2) if height else 0
+                workout = person_data.get("workout", 0)
+                has_trainer = person_data.get("has_personal_trainer", False)
+                name = person_data.get("name", "Unknown")
+                health_score = "Unable to compute (Missing Data)"
+            
+            # Simple workout recommendation logic based on workouts per week and BMI
+            if workout < 3:
+                recommendation = "Start with full-body workouts 3 days a week. Add 20-30 mins of moderate cardio."
+            else:
+                if bmi < 25:
+                    recommendation = "Focus on a Push/Pull/Legs hypertrophy split to build or maintain muscle."
+                else:
+                    recommendation = "Combine heavy strength training with High-Intensity Interval Training (HIIT) to reduce body fat."
+            
+            trainer_note = " Consult your personal trainer for a specific routine!" if has_trainer else ""
+
+            return {
+                "person_id": person_id,
+                "name": name,
+                "current_workouts_per_week": workout,
+                "health_score": health_score,
+                "workout_recommendation": recommendation + trainer_note
+            }
+            
+    raise HTTPException(status_code=404, detail="Person not found.")
