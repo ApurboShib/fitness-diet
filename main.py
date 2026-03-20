@@ -157,6 +157,90 @@ def recommend_diet(person_id: str):
     raise HTTPException(status_code=404, detail="Person not found.")
 
 
+# now we build an endpoints to analyze the health score of the person.
+
+@app.get('/stats/average_bmi')
+def average_bmi():
+    data = load_data()
+    totaal_bmi = 0
+    valid_user = 0
+    cnt = 0
+    for person in data:
+        weight = person.get("weight")
+        height = person.get("height")
+        
+        if weight and height and height>0:
+            bmi = weight / (height ** 2)
+            totaal_bmi += bmi
+            cnt += 1
+            valid_user += 1
+
+        if valid_user == 0:
+            raise HTTPException(status_code=400, detail="No valid users with height and weight data found.")
+    
+    average_bmi = totaal_bmi / valid_user
+    return {
+        "total_valid_user" : valid_user,
+        "average_bmi" : round(average_bmi, 2)
+    }
+
+@app.get('/stats/popular-diet')
+def get_popular_diet():
+
+    data = load_data()
+    diet_counts = {}
+
+    for person in data:
+        diet = person.get('diet')
+        
+        # skip if diet is None or an empty string
+        if not diet:
+            continue
+            
+        if diet in diet_counts:
+            diet_counts[diet] += 1
+        else:
+            diet_counts[diet] = 1
+
+    if not diet_counts:
+        return {"message": "No diet data found."}
+
+    # Find the diet with the maximum count
+    popular_diet = max(diet_counts, key=diet_counts.get)
+    return {
+        "most_popular_diet": popular_diet,
+        "total_users_following": diet_counts[popular_diet],
+        "all_diet_breakdown": diet_counts
+    }
+
+
+
+@app.get('/stats/health-overview')
+def get_health_overview():
+    
+    data = load_data()
+    total_users = len(data)
+    
+    if total_users == 0:
+        return {"message": "No user data found."}
+
+    users_with_trainer = 0
+
+    for person in data:
+        # Check if the boolean field is True
+        if person.get('has_personal_trainer') is True:
+            users_with_trainer += 1
+
+    users_without_trainer = total_users - users_with_trainer
+    percentage_with_trainer = (users_with_trainer / total_users) * 100
+
+    return {
+        "total_users": total_users,
+        "users_with_trainer": users_with_trainer,
+        "users_without_trainer": users_without_trainer,
+        "percentage_with_trainer": f"{round(percentage_with_trainer, 2)}%"
+    }
+
 
 # build a post endpoint to add the data.
 @app.post('/create')
