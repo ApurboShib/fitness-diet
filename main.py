@@ -21,53 +21,51 @@ class Person(BaseModel):
     diet : Annotated[str, Field(..., description="Diet type followed by the person")]
     gender : Annotated[str, Field(..., description="Gender of the person")]
 
+    @computed_field
+    @property
+    def bmi(self) -> float:
+        return self.weight / (self.height  ** 2)
 
-@computed_field
-@property
+    @computed_field
+    @property
+    def health_score(self) -> float:
+        # Calculate health score based on various factors
+        score = 0
 
-def bmi(self) -> float:
-    return self.weight / ((self.height / 100) ** 2)
+        # Age factor
+        if self.age < 30:
+            score += 20
+        elif self.age < 50:
+            score += 10
+        else:
+            score += 5
 
-@computed_field
-@property
-def health_score(self) -> float:
-    # Calculate health score based on various factors
-    score = 0
+        # BMI factor
+        if self.bmi < 18.5:
+            score += 10
+        elif self.bmi < 25:
+            score += 20
+        elif self.bmi < 30:
+            score += 10
+        else:
+            score += 5
 
-    # Age factor
-    if self.age < 30:
-        score += 20
-    elif self.age < 50:
-        score += 10
-    else:
-        score += 5
+        # Mental health factor
+        score += self.mental_health * 2
 
-    # BMI factor
-    if self.bmi < 18.5:
-        score += 10
-    elif self.bmi < 25:
-        score += 20
-    elif self.bmi < 30:
-        score += 10
-    else:
-        score += 5
+        # Workout factor
+        if self.workout >= 5:
+            score += 20
+        elif self.workout >= 3:
+            score += 10
+        else:
+            score += 5
 
-    # Mental health factor
-    score += self.mental_health * 2
+        # Personal trainer factor
+        if self.has_personal_trainer:
+            score += 10
 
-    # Workout factor
-    if self.workout >= 5:
-        score += 20
-    elif self.workout >= 3:
-        score += 10
-    else:
-        score += 5
-
-    # Personal trainer factor
-    if self.has_personal_trainer:
-        score += 10
-
-    return score
+        return score
 
 @app.get('/')
 def home():
@@ -87,7 +85,7 @@ def load_data():
 
 # save the data
 
-def dave_info(data):
+def save_info(data):
     with open ('personal_info.json','w') as f:
         json.dump(data,f)
 
@@ -132,3 +130,16 @@ def sort_data(sort_by:str = Query(..., description="Sort on the basis of height 
     # data is a list object so we don't use .values()
     response_data = sorted(data, key = lambda x : x.get(sort_by, 0), reverse = reverse_order)
     return response_data
+
+# build a post endpoint to add the data.
+@app.post('/create')
+def create_user(person : Person):
+    data = load_data()
+    for existing_person in data:
+        if existing_person.get("id") == person.id:
+            raise HTTPException(status_code=400, detail="Person with this ID already exists.")
+            
+    person_dict = person.model_dump()
+    data.append(person_dict)
+    save_info(data)
+    return JSONResponse(content={"message": "Person added successfully."}, status_code=201)
