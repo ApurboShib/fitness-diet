@@ -368,3 +368,64 @@ def recommend_workout(person_id: str = Path(..., description="Unique ID of the p
             }
             
     raise HTTPException(status_code=404, detail="Person not found.")
+
+# build a endpoint to advance search the data based on multiple query parameters.
+
+@app.get('/search')
+def advanced_search(
+    name: Optional[str] = Query(None, description="Filter by partial or full name"),
+    age_min: Optional[int] = Query(None, description="Minimum age of the person"),
+    age_max: Optional[int] = Query(None, description="Maximum age of the person"),
+    diet: Optional[str] = Query(None, description="Filter by exact diet type"),
+    gender: Optional[str] = Query(None, description="Filter by exact gender"),
+    has_personal_trainer: Optional[bool] = Query(None, description="Filter by personal trainer status"),
+    workout_min: Optional[int] = Query(None, description="Minimum workouts per week"),
+    workout_max: Optional[int] = Query(None, description="Maximum workouts per week")
+):
+  
+    data = load_data()
+    results = []
+
+    for person in data:
+        # Name filter (case-insensitive partial match)
+        if name and name.lower() not in person.get("name", "").lower():
+            continue
+        
+        # Age filters
+        age = person.get("age")
+        if age is not None:
+            if age_min is not None and age < age_min:
+                continue
+            if age_max is not None and age > age_max:
+                continue
+                
+        # Diet filter (case-insensitive exact match)
+        if diet and person.get("diet", "").lower() != diet.lower():
+            continue
+            
+        # Gender filter (case-insensitive exact match)
+        if gender and person.get("gender", "").lower() != gender.lower():
+            continue
+            
+        # Personal trainer filter
+        if has_personal_trainer is not None and person.get("has_personal_trainer") != has_personal_trainer:
+            continue
+            
+        # Workout filters
+        workout = person.get("workout")
+        if workout is not None:
+            if workout_min is not None and workout < workout_min:
+                continue
+            if workout_max is not None and workout > workout_max:
+                continue
+                
+        results.append(person)
+
+    if not results:
+        raise HTTPException(status_code=404, detail="No persons found matching the given criteria.")
+
+    return {
+        "count": len(results), 
+        "results": results
+    }
+
