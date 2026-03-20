@@ -26,26 +26,9 @@ class Person(BaseModel):
     def bmi(self) -> float:
         return self.weight / (self.height  ** 2)
 
-    
-
-# updated pydantic model with computed fields.
-
-class Updated_Person(Person):
-    id : Annotated[Optional[str], Field(None, description="Unique ID of the person")]
-    name : Annotated[Optional[str], Field(None, description="Name of the person")]
-    age : Annotated[Optional[int], Field(None,gt=0, lt=120, description="Age of the person")]
-    height : Annotated[Optional[float], Field(None,gt=0, description="Height of the person in cm")]
-    weight : Annotated[Optional[float], Field(None,gt=0, description="Weight of the person in kg")]
-    mental_health : Annotated[Optional[int], Field(None, description="Mental health score of the person on a scale of 1 to 10")]
-    workout : Annotated[Optional[int], Field(None, description="Number of workouts per week")]
-    has_personal_trainer : Annotated[Optional[bool], Field(None, description="Whether the person has a personal trainer or not")]
-    calories : Annotated[Optional[int], Field(None, description="Daily calorie intake of the person")]
-    diet : Annotated[Optional[str], Field(None, description="Diet type followed by the person")]
-
-
-@computed_field
-@property
-def health_score(self) -> float:
+    @computed_field
+    @property
+    def health_score(self) -> float:
         # Calculate health score based on various factors
         score = 0
 
@@ -83,6 +66,21 @@ def health_score(self) -> float:
             score += 10
 
         return score
+
+
+# updated pydantic model with computed fields.
+
+class Updated_Person(Person):
+    id : Annotated[Optional[str], Field(None, description="Unique ID of the person")]
+    name : Annotated[Optional[str], Field(None, description="Name of the person")]
+    age : Annotated[Optional[int], Field(None,gt=0, lt=120, description="Age of the person")]
+    height : Annotated[Optional[float], Field(None,gt=0, description="Height of the person in cm")]
+    weight : Annotated[Optional[float], Field(None,gt=0, description="Weight of the person in kg")]
+    mental_health : Annotated[Optional[int], Field(None, description="Mental health score of the person on a scale of 1 to 10")]
+    workout : Annotated[Optional[int], Field(None, description="Number of workouts per week")]
+    has_personal_trainer : Annotated[Optional[bool], Field(None, description="Whether the person has a personal trainer or not")]
+    calories : Annotated[Optional[int], Field(None, description="Daily calorie intake of the person")]
+    diet : Annotated[Optional[str], Field(None, description="Diet type followed by the person")]
 
 @app.get('/')
 def home():
@@ -162,7 +160,7 @@ def create_user(person : Person):
     return JSONResponse(content={"message": "Person added successfully."}, status_code=201)
 
 # create a put endpoint to update the data.
-@app.put('/update')
+@app.put('/update/{person_id}')
 def update_person(person_id: str, updated_person: Updated_Person):
     data = load_data()
 
